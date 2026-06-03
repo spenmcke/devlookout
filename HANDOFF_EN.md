@@ -85,7 +85,8 @@ Railway config is checked in as `railway.json`.
 Railway settings:
 
 - Builder: Nixpacks
-- Build command: `python3 -m pip install -r requirements.txt && npm ci && npm run build`
+- Build command: `npm run build`
+- Nixpacks providers: `node`, `python` via `nixpacks.toml`
 - Start command: `npm run start:railway`
 - Healthcheck path: `/health`
 
