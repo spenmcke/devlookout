@@ -4,7 +4,7 @@ import { envNumber, firstEnv, loadEnvFiles } from "../../../packages/shared/src/
 loadEnvFiles();
 
 export const config = {
-  port: envNumber("ORCHESTRATOR_PORT", 8080),
+  port: envNumber("PORT", envNumber("ORCHESTRATOR_PORT", 8080)),
   crmBaseUrl: firstEnv(["CRM_BASE_URL"], "http://localhost:8787"),
   cacheDir: firstEnv(["DIAGNOSIS_CACHE_DIR"], path.resolve(process.cwd(), "data/cache")),
   sentry: {

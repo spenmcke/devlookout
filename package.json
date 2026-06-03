@@ -10,12 +10,14 @@
     "seed-faults": "tsx apps/himalayas-api/src/seedFaults.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start:railway": "concurrently -k -n crm,api,orchestrator \"python3 apps/crm/crm_server.py\" \"npm run start:api\" \"npm run start:orchestrator\"",
     "start:api": "node --require ./dist/apps/himalayas-api/src/instrument.js dist/apps/himalayas-api/src/server.js",
     "start:orchestrator": "node dist/apps/himalayas-orchestrator/src/server.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
     "@sentry/node": "^9.30.0",
+    "concurrently": "^9.2.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^5.1.0"
@@ -24,7 +26,6 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.3",
     "@types/node": "^22.15.29",
-    "concurrently": "^9.1.2",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   }
