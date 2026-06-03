@@ -1,7 +1,1 @@
 providers = ["node", "python"]
-
-[phases.install]
-cmds = ["npm ci", "pip install -r requirements.txt"]
-
-[phases.build]
-cmds = ["npm run build"]

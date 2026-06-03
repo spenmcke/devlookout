@@ -87,6 +87,7 @@ Railway settings:
 - Builder: Nixpacks
 - Build command: `npm run build`
 - Nixpacks providers: `node`, `python` via `nixpacks.toml`
+- Dependency installs are handled by the Node and Python Nixpacks providers.
 - Start command: `npm run start:railway`
 - Healthcheck path: `/health`
 
