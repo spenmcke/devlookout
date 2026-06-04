@@ -39,18 +39,23 @@ function parseDkimSignatures(raw: string): DkimSignature[] {
 }
 
 function verifyFirstSignatureOnly(signatures: DkimSignature[]): DkimSignature {
-  const [first] = signatures;
-  if (!first) {
+  if (signatures.length === 0) {
     throw new DkimVerificationError("no DKIM signatures present");
   }
 
-  addBreadcrumb("dkim verifier selected signature", {
-    domain: first.domain,
-    selector: first.selector,
-    body_hash: first.bodyHash
-  });
+  for (const signature of signatures) {
+    if (signature.valid) {
+      addBreadcrumb("dkim verifier selected signature", {
+        domain: signature.domain,
+        selector: signature.selector,
+        body_hash: signature.bodyHash
+      });
+      return signature;
+    }
+  }
 
-  return first;
+  const firstDomain = signatures[0]?.domain ?? "unknown";
+  throw new DkimVerificationError(`no valid DKIM signatures found; checked ${signatures.length} signature(s) starting with ${firstDomain}`);
 }
 
 function extract(line: string, key: string): string | undefined {
