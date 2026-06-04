@@ -36,27 +36,5 @@ async function refreshTokenMidFlight(locale: string): Promise<RetryToken> {
 function parseExpiryForRetry(locale: string, token: RetryToken): Date {
   addBreadcrumb("retry path parsing expiry", { locale, token: token.value });
 
-  if (locale === "ja_JP") {
-    return parseJapaneseEraDate(token.expiryDisplay);
-  }
-
-  const parsed = new Date(token.expiryDisplay);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new DateFormatError(`unparseable date "${token.expiryDisplay}"`);
-  }
-  return parsed;
-}
-
-function parseJapaneseEraDate(value: string): Date {
-  if (/\u4ee4\u548c\d+\u5e74/u.test(value)) {
-    throw new DateFormatError(
-      `unparseable date "${value}" - expected ISO-8601 in RetryCoordinator.parseExpiry()`
-    );
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new DateFormatError(`unparseable date "${value}"`);
-  }
-  return parsed;
+  return token.expiryDate;
 }
