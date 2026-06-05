@@ -57,3 +57,25 @@ function extract(line: string, key: string): string | undefined {
   const match = line.match(new RegExp(`${key}=([^;\\s]+)`));
   return match?.[1];
 }
+
+function verifyFirstSignatureOnly(signatures: DkimSignature[]): DkimSignature {
+  if (signatures.length === 0) {
+  // Check all signatures and return the first va
+  for (const signature of signatures) {
+    if (signature.valid) {
+      addBreadcrumb("dkim verifier selected signature", {
+        domain: signature.domain,
+        selector: signature.selector,
+        body_hash: signature.bodyHash
+      });
+      return signature;
+    }
+  }
+  // If no valid signature found, return the first one to maintain error reporting
+  const [first] = signatures;
+  addBreadcrumb("dkim verifier selected signature", {
+    domain: first.domain,
+    selector: first.selector,
+    body_hash: first.bodyHash
+  });
+  return first;
