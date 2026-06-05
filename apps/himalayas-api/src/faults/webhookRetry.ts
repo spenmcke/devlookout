@@ -24,7 +24,7 @@ function buildPolicy(region: string): RetryPolicy {
   if (region === "EMEA") {
     return {
       region,
-      configuredCap: 3,
+      configuredCap: 5,
       expectedCap: 5
     };
   }
