@@ -1,0 +1,98 @@
+#!/bin/sh
+set -eu
+umask 077
+
+release_version='@LOOKOUT_RELEASE_VERSION@'
+orchestration_url='@LOOKOUT_ORCHESTRATION_URL@'
+orchestration_sha256='@LOOKOUT_ORCHESTRATION_SHA256@'
+target_url='@LOOKOUT_TARGET_URL@'
+target_sha256='@LOOKOUT_TARGET_SHA256@'
+setup_origin=${LOOKOUT_SETUP_ORIGIN:-https://app.devlookout.com}
+
+fail() { printf '%s\n' "lookout-bootstrap: prerequisite error: $*" >&2; exit 1; }
+
+[ "$#" -eq 0 ] || fail 'arguments are not accepted'
+[ -n "${LOOKOUT_SETUP_TOKEN_FILE:-}" ] || fail 'LOOKOUT_SETUP_TOKEN_FILE is required'
+[ -f "$LOOKOUT_SETUP_TOKEN_FILE" ] || fail 'setup token file is not a regular file'
+
+if [ "${LOOKOUT_BOOTSTRAP_TEST_MODE:-0}" = 1 ]; then
+  release_version=${LOOKOUT_BOOTSTRAP_VERSION:-$release_version}
+  orchestration_url=${LOOKOUT_BOOTSTRAP_ORCHESTRATION_URL:-${LOOKOUT_BOOTSTRAP_RELEASE_URL:-$orchestration_url}}
+  orchestration_sha256=${LOOKOUT_BOOTSTRAP_ORCHESTRATION_SHA256:-${LOOKOUT_BOOTSTRAP_SHA256:-$orchestration_sha256}}
+  target_url=${LOOKOUT_BOOTSTRAP_TARGET_URL:-$target_url}
+  target_sha256=${LOOKOUT_BOOTSTRAP_TARGET_SHA256:-$target_sha256}
+  curl_command=${LOOKOUT_BOOTSTRAP_CURL:-curl}
+  node_command=${LOOKOUT_BOOTSTRAP_NODE:-node}
+else
+  curl_command=curl
+  node_command=node
+fi
+
+command -v "$node_command" >/dev/null 2>&1 || fail 'Node.js 20+ is required on the orchestration host'
+node_major=$("$node_command" -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || printf '0\n')
+case "$node_major" in ''|*[!0-9]*) node_major=0 ;; esac
+[ "$node_major" -ge 20 ] || fail "Node.js 20+ is required on the orchestration host; found major version $node_major"
+
+for command in "$curl_command" tar mktemp awk mkdir rm; do
+  command -v "$command" >/dev/null 2>&1 || fail "$command is required on the orchestration host"
+done
+if command -v sha256sum >/dev/null 2>&1; then checksum_command=sha256sum
+elif command -v shasum >/dev/null 2>&1; then checksum_command=shasum
+else fail 'sha256sum or shasum is required on the orchestration host'; fi
+
+case "$release_version" in v[0-9]*.[0-9]*.[0-9]*) ;; *) fail 'invalid pinned release version' ;; esac
+for digest in "$orchestration_sha256" "$target_sha256"; do
+  case "$digest" in *[!0-9a-f]*|'') fail 'invalid pinned SHA-256 digest' ;; esac
+  [ "${#digest}" -eq 64 ] || fail 'invalid pinned SHA-256 digest'
+done
+if [ "${LOOKOUT_BOOTSTRAP_TEST_MODE:-0}" != 1 ]; then
+  case "$orchestration_url" in https://*) ;; *) fail 'orchestration artifact URL must use HTTPS' ;; esac
+  case "$target_url" in https://*) ;; *) fail 'target artifact URL must use HTTPS' ;; esac
+  case "$setup_origin" in https://*) ;; *) fail 'setup origin must use HTTPS' ;; esac
+fi
+
+temporary=$(mktemp -d "${TMPDIR:-/tmp}/lookout-bootstrap.XXXXXX") || fail 'could not create a temporary directory'
+cleanup() { rm -rf -- "$temporary"; }
+trap cleanup EXIT HUP INT TERM
+report_failure() {
+  failure_code=$1
+  setup_token=$(awk 'NR == 1 { print; exit }' "$LOOKOUT_SETUP_TOKEN_FILE" 2>/dev/null || true)
+  case "$setup_token" in lst_[A-Za-z0-9_-]*|lrc_[A-Za-z0-9_-]*) ;; *) return ;; esac
+  [ "${#setup_token}" -eq 47 ] || return
+  printf '{"setup_token":"%s","code":"%s"}' "$setup_token" "$failure_code" | "$curl_command" --proto '=https' --tlsv1.2 --fail --silent --show-error --header 'Content-Type: application/json' --data-binary @- "$setup_origin/v1/setup-sessions/failures" >/dev/null 2>&1 || true
+  if [ "$checksum_command" = sha256sum ]; then diagnostic_key=$(printf '%s' "$failure_code:$setup_token" | sha256sum | awk '{print $1}')
+  else diagnostic_key=$(printf '%s' "$failure_code:$setup_token" | shasum -a 256 | awk '{print $1}'); fi
+  diagnostic_body=$(printf '{"setup_token":"%s","kind":"failure","code":"%s","phase":"bootstrap","platform":{"os":"posix","architecture":"unknown","installer_version":"%s"},"idempotency_key":"%s"}' "$setup_token" "$failure_code" "$release_version" "$diagnostic_key")
+  diagnostic_attempt=1
+  while [ "$diagnostic_attempt" -le 3 ]; do
+    printf '%s' "$diagnostic_body" | "$curl_command" --proto '=https' --tlsv1.2 --fail --silent --show-error --header 'Content-Type: application/json' --data-binary @- "$setup_origin/v1/setup-support/events" >/dev/null 2>&1 && break
+    diagnostic_attempt=$((diagnostic_attempt + 1))
+  done
+  unset diagnostic_body diagnostic_key diagnostic_attempt
+  unset setup_token
+}
+archive=$temporary/orchestration.tar.gz
+"$curl_command" --proto '=https' --tlsv1.2 --fail --silent --show-error --location --retry 3 --output "$archive" "$orchestration_url" || { report_failure artifact_download; fail 'orchestration artifact download failed'; }
+if [ "$checksum_command" = sha256sum ]; then actual=$(sha256sum "$archive" | awk '{print $1}')
+else actual=$(shasum -a 256 "$archive" | awk '{print $1}'); fi
+[ "$actual" = "$orchestration_sha256" ] || { report_failure artifact_checksum; fail 'orchestration artifact checksum mismatch'; }
+
+source_directory=$temporary/source
+mkdir "$source_directory"
+members=$temporary/archive-members
+tar -tzf "$archive" > "$members" || { report_failure artifact_extract; fail 'orchestration artifact is unreadable'; }
+while IFS= read -r member; do
+  case "$member" in ''|/*|../*|*/../*|*/..|*'//'*) report_failure artifact_extract; fail 'orchestration artifact contains an unsafe path' ;; esac
+done < "$members"
+tar -xzf "$archive" -C "$source_directory" --strip-components=1 --no-same-owner --no-same-permissions || { report_failure artifact_extract; fail 'orchestration artifact extraction failed'; }
+[ -f "$source_directory/install/onboard.js" ] || { report_failure artifact_extract; fail 'orchestration artifact does not contain install/onboard.js'; }
+[ -f "$source_directory/install/fleet.js" ] || { report_failure artifact_extract; fail 'orchestration artifact does not contain install/fleet.js'; }
+[ -f "$source_directory/package.json" ] || { report_failure artifact_extract; fail 'orchestration artifact does not contain package metadata'; }
+
+unset LOOKOUT_SETUP_CODE LOOKOUT_ENROLLMENT_CODE LOOKOUT_ACTIVATION_CODE 2>/dev/null || true
+LOOKOUT_SOURCE_DIR=$source_directory
+LOOKOUT_RELEASE_URL=$target_url
+LOOKOUT_RELEASE_SHA256=$target_sha256
+export LOOKOUT_SOURCE_DIR LOOKOUT_RELEASE_URL LOOKOUT_RELEASE_SHA256
+printf '%s\n' "Starting Lookout $release_version orchestrator..."
+exec "$node_command" "$source_directory/install/onboard.js"

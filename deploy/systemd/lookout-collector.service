@@ -1,0 +1,52 @@
+[Unit]
+Description=Lookout continuous endpoint security collector
+Documentation=file:/opt/lookout/docs/operations.md
+After=lookout.service network-online.target
+Wants=network-online.target
+Requires=lookout.service
+
+[Service]
+Type=simple
+User=lookout-collector
+Group=lookout-collector
+WorkingDirectory=/opt/lookout
+Environment=NODE_ENV=production
+Environment=LOOKOUT_DATA_DIR=/var/lib/lookout-collector
+Environment=LOOKOUT_REQUIRE_ENCRYPTION=true
+Environment=LOOKOUT_MASTER_KEY_FILE=%d/lookout-master-key
+Environment=LOOKOUT_API_TOKEN_FILE=%d/lookout-api-token
+LoadCredential=lookout-master-key:/etc/lookout-collector/master-key
+LoadCredential=lookout-api-token:/etc/lookout-collector/api-token
+ExecStart=/usr/bin/node /opt/lookout/bin/lookout.js collector-run /etc/lookout-collector/identity https://lookout.example.internal
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+UMask=0077
+StateDirectory=lookout-collector
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RemoveIPC=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+ReadOnlyPaths=/etc/lookout-collector
+
+[Install]
+WantedBy=multi-user.target

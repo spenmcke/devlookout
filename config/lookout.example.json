@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "server": {
+    "host": "127.0.0.1",
+    "port": 4173,
+    "allowLoopbackAdmin": true,
+    "approvedSourceAddresses": ["127.0.0.1", "::1", "::ffff:127.0.0.1"]
+  },
+  "storage": {
+    "dataDirectory": "../data",
+    "requireEncryption": false,
+    "retentionDays": 7,
+    "auditRetentionDays": 7,
+    "maximumPercent": 2
+  },
+  "auth": {
+    "credentialsFile": null,
+    "legacyTokenEnvironment": null
+  },
+  "collectors": {
+    "keysFile": null,
+    "tailscale": {
+      "enabled": false,
+      "tailnet": null,
+      "credentialReference": null,
+      "authMode": "api-token",
+      "baseUrl": "https://api.tailscale.com",
+      "modes": ["network-flow", "configuration-audit"],
+      "pollIntervalSeconds": 15,
+      "initialLookbackSeconds": 300,
+      "ingestionDelaySeconds": 30
+    }
+  },
+  "secrets": {
+    "environment": {},
+    "files": {}
+  },
+  "export": {
+    "enabled": false,
+    "type": null,
+    "endpoint": null,
+    "credentialReference": null,
+    "batchSize": 100,
+    "maxPending": 50000,
+    "flushIntervalSeconds": 30,
+    "categories": [],
+    "attributeAllowlist": [],
+    "includeActor": false
+  },
+  "consoleSync": {
+    "enabled": false,
+    "endpoint": null,
+    "credentialReference": null,
+    "deploymentId": null,
+    "batchSize": 10,
+    "maxPending": 1000,
+    "intervalSeconds": 30
+  },
+  "webhook": {
+    "enabled": false,
+    "type": null,
+    "endpoint": null,
+    "credentialReference": null,
+    "batchSize": 50,
+    "maxPending": 10000,
+    "flushIntervalSeconds": 15,
+    "cooldownSeconds": 300
+  }
+}
