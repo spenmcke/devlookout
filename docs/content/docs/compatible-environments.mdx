@@ -1,0 +1,56 @@
+---
+title: "Compatible environments"
+description: "Check which hosts, Linux VMs, cloud providers, networks, and access methods work with Lookout."
+---
+
+Lookout uses one orchestration host to discover and install security monitoring on selected Linux VMs. The orchestration host and protected targets have different requirements.
+
+## Compatibility summary
+
+| Component | Compatible environment |
+| --- | --- |
+| Orchestration host | macOS, Linux, or Windows with Node.js 20 or newer |
+| Protected targets | Linux VMs using systemd on x86-64 or ARM64 |
+| Network | One private network or VPN where the selected VMs are reachable through an authorized management path |
+| Cloud discovery | Authenticated `aws`, `gcloud`, `az`, or `doctl` CLI sessions |
+| Administrative access | Provider-native remote access or identity-pinned SSH, with noninteractive administrator or `sudo` access |
+
+## Orchestration host
+
+Run the guided Setup prompt from a macOS, Linux, or Windows computer with Node.js 20 or newer. This computer coordinates discovery, access verification, installation, and deployment validation.
+
+The orchestration host is not automatically protected. macOS and Windows can coordinate an installation, but Lookout does not currently install collectors on them.
+
+## Protected targets
+
+Lookout currently protects Linux VMs that:
+
+- Use systemd
+- Run on x86-64 or ARM64
+- Are reachable from an authorized management path
+- Provide noninteractive administrator or `sudo` access during installation
+
+Self-hosted applications are monitored through the compatible Linux VMs on which they run.
+
+## Cloud discovery
+
+Setup can discover running Linux VMs through an authenticated provider CLI:
+
+| Provider | Required CLI |
+| --- | --- |
+| Amazon Web Services | `aws` |
+| Google Cloud | `gcloud` |
+| Microsoft Azure | `az` |
+| DigitalOcean | `doctl` |
+
+Authenticate the CLI for every account, project, subscription, region, or zone that Setup needs to search. Lookout asks you to approve the VMs before installation.
+
+## Network and access
+
+All selected VMs must be in one private network or VPN and reachable through an authorized management path. Setup verifies access before installing anything.
+
+Supported access methods include provider-native remote access and identity-pinned SSH. The account used for installation must have noninteractive administrator or `sudo` access.
+
+<Callout type="info" title="Ready to install?">
+Continue with the [Quickstart](/install) after confirming these requirements.
+</Callout>

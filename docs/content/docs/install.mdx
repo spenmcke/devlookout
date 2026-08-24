@@ -1,0 +1,106 @@
+---
+title: "Quickstart"
+description: "Install Lookout on supported Linux VMs through the guided Setup flow."
+---
+
+Lookout installs security monitoring on the Linux VMs you authorize within one private network. Before you begin, confirm that your systems meet the [compatible environment requirements](/compatible-environments).
+
+<a className="setup-button" href="https://app.devlookout.com/setup">Start installation</a>
+
+## How installation works
+
+<Steps>
+  <Step>
+    ### Start Setup
+
+    Open [Lookout Setup](https://app.devlookout.com/setup), sign in, and copy the Setup instructions into your coding agent.
+  </Step>
+  <Step>
+    ### Install the workstation CLI
+
+    The agent downloads the official CLI installer to a temporary file and runs it without `sudo`. The installer verifies the pinned release checksum, installs the CLI for the current user, and runs `lookout version` to confirm it is available.
+  </Step>
+  <Step>
+    ### Choose the network and VMs
+
+    The agent asks which private network to monitor, discovers running Linux VMs through your authenticated provider CLIs, and asks which VMs you want to protect.
+  </Step>
+  <Step>
+    ### Verify access
+
+    The agent confirms each SSH host identity and administrative access to every selected VM before installation begins.
+  </Step>
+  <Step>
+    ### Run the installer
+
+    The agent configures the workstation CLI with each VM's private address and, when needed, its existing SSH-config host. You run `lookout login` and authenticate in your browser. After login, the agent runs `lookout install` while Lookout deploys and verifies the selected VMs.
+  </Step>
+  <Step>
+    ### Confirm completion
+
+    Installation is complete only when the CLI reports success and the selected VMs appear in the Lookout Console.
+  </Step>
+</Steps>
+
+<Callout type="warning" title="Keep the installer running">
+Keep the coding agent and terminal running until `lookout install` reports success.
+</Callout>
+
+## Authentication and retries
+
+Authentication is performed only by you through `lookout login`. The coding agent does not receive your password or browser session. The CLI receives a short-lived permission that can create one deployment.
+
+The CLI installer is available at `https://app.devlookout.com/cli/install.sh` for macOS and Linux and `https://app.devlookout.com/cli/install.ps1` for Windows. It installs for the current user and verifies the pinned workstation artifact before executing it. Do not run it with administrator privileges.
+
+- Run `lookout diagnose` to inspect an installation failure.
+- Fix the reported access or installation problem.
+- Run `lookout install --retry`. The CLI resumes a saved deployment when possible and otherwise starts a new installation attempt.
+
+If a blocker remains, run `lookout report`, complete the private survey file it creates, then run `lookout report submit SURVEY_FILE`. The CLI uses the existing short-lived login permission to link the report to your account. It scans the survey locally for secrets before submission. No separate support token is required.
+
+## Source-checkout installer
+
+The workstation CLI is the supported account-linked setup flow. From an authorized source checkout, the local installer remains available for development:
+
+```sh
+./install.sh
+```
+
+<Callout type="warning" title="Use the CLI for SaaS setup">
+The source-checkout installer does not perform the browser login flow described above.
+</Callout>
+
+## Common installation errors
+
+| Error | Why it happens | What to do |
+| --- | --- | --- |
+| `Installation permission is missing or expired` | Login was not completed or its short-lived permission expired. | Run `lookout login` personally, then retry. |
+| `Needs access` | A cloud CLI is not authenticated, VM management permissions are missing, or noninteractive `sudo` is unavailable. | Grant only the requested minimum access, then run `lookout install --retry`. |
+| `VM not found` | Discovery did not cover every account, project, subscription, region, or zone. | Confirm the authenticated scope of each cloud CLI, then search again. |
+| `Release preflight failed` | The checksum, archive layout, runtime, systemd environment, or required commands are incompatible. | The existing installation is not removed. Fix the reported problem, then run `lookout install --retry`. |
+| `Installation interrupted` | The terminal, network connection, or permission flow was interrupted. | Run `lookout diagnose`, fix the problem, then run `lookout install --retry`. |
+| `VM not visible in Console` | A service, heartbeat, or Console snapshot did not complete successfully. | Check the visible service status, then select **Try again**. |
+| HTTP `400` or `409` | The control-plane state, approved scope, or snapshot sequence regressed. | Select **Try again** to create a support ticket. |
+
+## Get help
+
+Run `lookout diagnose` and retry first. Selecting **Try again** creates a support ticket. If the blocker remains, use `lookout report` immediately. Do not wait for installation to succeed. Lookout support will contact the account owner from [support@devlookout.com](mailto:support@devlookout.com).
+
+For guided troubleshooting, connect your coding agent to the Lookout Support AI Agent.
+
+1. Sign in to [Lookout Settings](https://app.devlookout.com/settings) and find **Support AI**.
+2. Review the **Support MCP setup** preview, then click the copy button under the **Support MCP setup** preview.
+3. Paste the setup into a trusted local coding agent.
+4. The agent configures `https://app.devlookout.com/support/mcp` as a **Streamable HTTP** MCP server with **Bearer token** authentication.
+5. The agent does not run OAuth login because this server does not support OAuth.
+6. The agent verifies that the server exposes `ask_lookout_support` and `check_lookout_support`.
+
+The setup copied from Settings includes your secret Support token. Paste it only into a trusted local coding agent, never into agent chat, source control, command history, URLs, or logs. The Lookout Support MCP uses Bearer token authentication, not OAuth. Do not run an OAuth login for this server. A request without the Support token returns HTTP `401`, which is expected.
+
+The connection steps below are safe to copy, but they do not contain your token. Use the copy button under the **Support MCP setup** preview in Settings for the one-paste connection setup.
+
+<AgentCommandLinks compact />
+
+<Callout type="warning" title="Keep credentials private">
+Lookout support will never ask for your installation permission, password, private key, or other credentials. Never send these values in email, chat, URLs, source control, logs, or a support ticket.
+</Callout>
