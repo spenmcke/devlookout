@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Everest - Escalation context</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="mark">E</div><div class="name">Everest</div></div>
+    <div class="nav-item"><span class="ic">⌕</span> Search</div>
+    <div class="nav-item"><span class="ic">◳</span> Inbox</div>
+
+    <div class="nav-label">Tickets</div>
+    <div class="nav-item active"><span class="ic">◉</span> Active queue <span class="badge">23</span></div>
+    <div class="nav-item"><span class="ic">◷</span> Awaiting customer <span class="badge">6</span></div>
+    <div class="nav-item"><span class="ic">✓</span> Resolved <span class="badge">128</span></div>
+
+    <div class="nav-label">Proactive</div>
+    <div class="nav-item"><span class="ic">⚑</span> Detected issues <span class="badge">4</span></div>
+
+    <div class="nav-label">Build</div>
+    <div class="nav-item"><span class="ic">✎</span> PR in Draft <span class="badge">2</span></div>
+    <div class="nav-item"><span class="ic">◑</span> PR in Review <span class="badge">3</span></div>
+    <div class="nav-item"><span class="ic">↩</span> Change Requested <span class="badge">1</span></div>
+
+    <div class="spacer"></div>
+    <div class="me"><div class="av">YC</div><div class="me-name">Yolanda Cao</div><span class="ic settings" title="Settings">⚙</span></div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <span class="crumb">Active queue <span class="sep">/</span> <b id="crumb-ticket" data-loadable>Loading</b></span>
+      <div class="right">
+        <select id="case-picker" class="case-select" aria-label="Case picker"></select>
+        <span class="pill" id="top-plan" data-loadable>Loading</span>
+        <span class="pill" id="top-position">02 / 23</span>
+      </div>
+    </div>
+
+    <div class="scroll">
+      <div class="h-id" id="ticket-meta" data-loadable>Loading</div>
+      <div class="h-title" id="ticket-title" data-loadable>Loading</div>
+      <div class="tagrow" id="ticket-tags"></div>
+
+      <div class="section-label">Customer</div>
+      <div class="cust">
+        <div class="cell"><div class="k">Account</div><div class="v" id="customer-account" data-loadable>Loading</div></div>
+        <div class="cell"><div class="k">Plan</div><div class="v" id="customer-plan" data-loadable>Loading</div></div>
+        <div class="cell"><div class="k">ARR</div><div class="v hl" id="customer-arr" data-loadable>Loading</div></div>
+        <div class="cell"><div class="k">CSM</div><div class="v" id="customer-csm" data-loadable>Loading</div></div>
+      </div>
+
+      <div class="section-label">Diagnosis <span class="auto">LLM</span><span class="stale" id="stale-note" hidden>showing last successful run</span></div>
+      <div class="rc">
+        <div class="rc-line">
+          <div class="rc-ic">◬</div>
+          <div><div class="rc-k">What is happening</div><div class="rc-v" id="diag-what" data-diagnosis>Loading</div></div>
+        </div>
+        <div class="rc-line">
+          <div class="rc-ic">⊙</div>
+          <div><div class="rc-k">Who is affected</div><div class="rc-v" id="diag-who" data-diagnosis>Loading</div></div>
+        </div>
+        <div class="rc-line">
+          <div class="rc-ic">⤳</div>
+          <div><div class="rc-k">When it triggers</div><div class="rc-v" id="diag-when" data-diagnosis>Loading</div></div>
+        </div>
+        <div class="rc-line">
+          <div class="rc-ic">◇</div>
+          <div><div class="rc-k">Likely root cause</div><div class="rc-v" id="diag-root" data-diagnosis>Loading</div></div>
+        </div>
+      </div>
+
+      <div class="section-label">Related context</div>
+      <div class="linked">
+        <span class="jic">JIRA</span>
+        <a class="jt" id="jira-link" data-loadable href="#" target="_blank" rel="noreferrer">Loading</a>
+        <span class="jm" id="jira-status" data-loadable>Loading</span>
+      </div>
+      <div class="floc">
+        <span class="loc-ic">◇</span>
+        <span class="path" id="code-file" data-loadable>Loading</span>
+        <span class="ln" id="code-lines" data-loadable>Loading</span>
+      </div>
+
+      <div class="section-label">Contacts</div>
+      <div class="contacts" id="contacts"></div>
+
+      <div class="section-label">Assign</div>
+      <div class="assign">
+        <div class="av" id="assignee-initials" data-loadable>--</div>
+        <div class="who"><div class="nm" id="assignee-name" data-loadable>Loading</div><div class="ro" id="assignee-role" data-loadable>Loading</div></div>
+        <div class="why" id="assignee-why" data-loadable>Loading</div>
+      </div>
+
+      <div class="section-label">Suggested fix</div>
+      <div class="fix">
+        <div class="lead" id="fix-summary" data-diagnosis>Loading</div>
+        <pre id="fix-diff" data-diagnosis>Loading</pre>
+        <div class="scope">Scope <b id="fix-scope" data-diagnosis>Loading</b></div>
+        <div class="act">
+          <button class="btn p" id="draft-pr">Open draft PR</button>
+          <button class="btn s" id="edit-fix">Edit</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="right">
+    <div class="right-head">
+      <div class="src"><span class="d"></span> Sentry</div>
+      <span class="ro"><i>●</i> read-only</span>
+    </div>
+    <div class="conn">
+      <span class="c"><span class="g"></span> Sentry</span>
+      <span class="c"><span class="g"></span> Jira</span>
+      <span class="c"><span class="g"></span> CRM</span>
+      <span class="c"><span class="g"></span> LLM</span>
+    </div>
+
+    <div class="err">
+      <div class="etype" id="sentry-type" data-loadable>Loading</div>
+      <div class="emsg" id="sentry-message" data-loadable>Loading</div>
+      <div class="err-meta">
+        <div class="m"><div class="k">First seen</div><div class="v" id="sentry-first" data-loadable>Loading</div></div>
+        <div class="m"><div class="k">Events 24h</div><div class="v red-num" id="sentry-count" data-loadable>Loading</div></div>
+        <div class="m"><div class="k">Release</div><div class="v" id="sentry-release" data-loadable>Loading</div></div>
+      </div>
+    </div>
+
+    <div class="logwrap">
+      <div class="log" id="sentry-log"></div>
+    </div>
+  </aside>
+</div>
+<script src="/app.js" defer></script>
+</body>
+</html>

@@ -1,70 +1,115 @@
-# Lookout
+# Everest Himalayas demo
 
-Lookout is security observability for private networks and self-hosted applications.
+This project builds the Himalayas production incident demo:
 
-Use [Lookout](https://app.devlookout.com) to set up and monitor your environment.
+- `himalayas-api`: Node.js, TypeScript, Express service that sends real fault events to Sentry.
+- `himalayas-orchestrator`: Node.js, TypeScript, Express service that reads Sentry, CRM, Jira, and Anthropic, then returns one context JSON.
+- `apps/frontend`: static Everest context screen wired to live orchestrator data.
+- `apps/crm`: Flask CRM service backed by `customers.json`.
 
-## Install Lookout
+The Node services load environment variables from this project first, then from
+`../.env`, so keys in `/Users/home/Projects/demo/.env` are picked up without
+copying secrets into this folder.
 
-Install the checksum-verified Lookout CLI on the administrator workstation without `sudo`:
+## Install
 
-```sh
-installer=$(mktemp)
-curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location https://app.devlookout.com/cli/install.sh --output "$installer"
-sh "$installer"
-rm -f "$installer"
-export PATH="$HOME/.local/bin:$PATH"
-lookout version
+```bash
+npm install
+pip install flask flask-cors
 ```
 
-Then configure and install the approved VMs:
+## Environment
 
-```sh
-lookout vm add --name api-1 --address 10.0.1.10 --ssh-host production-api
-lookout vm add --name db-1 --address 10.0.1.11 --ssh-user ubuntu
-lookout vm central api-1
-lookout login
-lookout install
+Copy `.env.example` to `.env` if you want local overrides. Existing parent env
+values are also supported.
+
+Required for live demo:
+
+```bash
+SENTRY_DSN=
+SENTRY_PERSONAL_TOKEN=
+SENTRY_AUTH_TOKEN=
+SENTRY_ORG_TOKEN=
+SENTRY_API_KEY=
+SENTRY_LEGACY_API_KEY=
+SENTRY_BASE_URL=https://sentry.io
+SENTRY_ORG_SLUG=
+SENTRY_PROJECT_SLUG=himalayas-api
+
+ANTHROPIC_API_KEY=
+ANTHROPIC_KEY=
+ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+ANTHROPIC_TIMEOUT_MS=30000
+
+ATLASSIAN_BASE_URL=https://your-domain.atlassian.net
+ATLASSIAN_EMAIL=
+ATLASSIAN_API_KEY=
+ATLASSIAN_BEARER_TOKEN=
+JIRA_PROJECT_KEY=HIM
 ```
 
-The coding agent may discover and configure the VMs and run installation. The user completes `lookout login` personally in the browser. The CLI receives one short-lived installation permission, not a general SaaS account credential.
+Aliases are intentional: `SENTRY_API_KEY`, `ATLASSIAN_API_KEY`, and
+`ANTHROPIC_KEY` are accepted.
 
-The CLI checks SSH host identities and uses the workstation's existing SSH agent without forwarding it. The central VM proves possession of its deployment key before SaaS activates the deployment. Incomplete installations can be inspected with `lookout diagnose` and resumed with `lookout install --retry`.
+Sentry event ingestion requires a DSN. You can set `SENTRY_DSN` directly, or set
+`SENTRY_ORG_SLUG`, `SENTRY_PROJECT_SLUG`, and `SENTRY_AUTH_TOKEN` so
+`himalayas-api` can read the first active project client key from Sentry.
 
-For an unresolved blocker after login, run `lookout report`, complete the generated survey, then run `lookout report submit SURVEY_FILE`. The CLI links the report with the existing login permission and scans it locally for secrets before submission.
+For Jira Cloud, use either:
 
-From an authorized source checkout, the legacy local installer remains available:
+- API token Basic Auth: `ATLASSIAN_BASE_URL`, `ATLASSIAN_EMAIL`, and
+  `ATLASSIAN_API_KEY`
+- OAuth 2.0: `ATLASSIAN_BEARER_TOKEN`; the orchestrator will try Atlassian
+  accessible resource discovery
 
-```sh
-./install.sh
+## Run everything
+
+```bash
+npm run dev
 ```
 
-Verify an installation:
+Open `http://localhost:8080`. The orchestrator serves the static frontend from
+that port.
 
-```sh
-sudo lookout doctor
+## Seed Sentry
+
+Start `npm run dev` first, then run:
+
+```bash
+npm run seed-faults
 ```
 
-Remove Lookout while retaining its data:
+Each call intentionally returns HTTP 500 from `himalayas-api`; that is the
+expected signal that the SDK captured a real exception.
 
-```sh
-./uninstall.sh
+## Trigger one fault live
+
+```bash
+curl -X POST http://localhost:7070/faults/locale-expiry \
+  -H 'content-type: application/json' \
+  -d '{"account_domain":"kintaro.jp","locale":"ja_JP"}'
+
+curl -X POST http://localhost:7070/faults/webhook-retry \
+  -H 'content-type: application/json' \
+  -d '{"account_domain":"northwind.io","region":"EMEA"}'
+
+curl -X POST http://localhost:7070/faults/pool-exhaust \
+  -H 'content-type: application/json' \
+  -d '{"account_domain":"pineconeretail.com"}'
+
+curl -X POST http://localhost:7070/faults/dkim-verify \
+  -H 'content-type: application/json' \
+  -d '{"account_domain":"velto.de"}'
 ```
 
-Permanently remove Lookout-managed data only when explicitly intended:
+## API endpoints
 
-```sh
-./uninstall.sh --purge
+```bash
+GET  http://localhost:8080/cases
+GET  http://localhost:8080/context/latest?fault=locale-expiry
+GET  http://localhost:8080/context/:sentryIssueId
+POST http://localhost:8080/pr/draft
 ```
 
-## Lookout Support AI production runbook
-
-The MVP support limiter and generation concurrency controls are in memory. Run the hosted application as exactly one replica and set `LOOKOUT_SUPPORT_SINGLE_REPLICA=true`. The server refuses to enable Support AI unless this guard is present together with the OpenAI, Resend, support inbox, reply-domain, signing, webhook, and allowlisted staff configuration.
-
-Required configuration: `OPENAI_API_KEY`, `LOOKOUT_SUPPORT_MODEL`, `LOOKOUT_RESEND_API_KEY`, `LOOKOUT_SUPPORT_EMAIL_FROM`, `LOOKOUT_SUPPORT_INBOX_EMAIL`, `LOOKOUT_SUPPORT_REPLY_DOMAIN`, `LOOKOUT_SUPPORT_REPLY_SIGNING_SECRET`, `LOOKOUT_RESEND_WEBHOOK_SECRET`, `LOOKOUT_SUPPORT_STAFF_EMAILS`, and `LOOKOUT_SUPPORT_SINGLE_REPLICA=true`.
-
-Optional limits and timeouts: `LOOKOUT_DOCS_INDEX_URL`, `LOOKOUT_DOCS_TIMEOUT_MS`, `LOOKOUT_SUPPORT_TIMEOUT_MS`, `LOOKOUT_SUPPORT_MAX_OUTPUT_TOKENS`, `LOOKOUT_SUPPORT_HOURLY_LIMIT`, `LOOKOUT_SUPPORT_DAILY_LIMIT`, `LOOKOUT_SUPPORT_CHECK_HOURLY_LIMIT`, `LOOKOUT_SUPPORT_GLOBAL_CONCURRENCY`, `LOOKOUT_SUPPORT_TOKEN_CONCURRENCY`, `LOOKOUT_SUPPORT_RETENTION_DAYS`, `LOOKOUT_SUPPORT_EMAIL_MAX_ATTEMPTS`, and `LOOKOUT_SUPPORT_EMAIL_TIMEOUT_MS`.
-
-Before increasing the application replica count, replace the in-memory hourly, daily, and concurrency limiter with an atomic Supabase implementation, verify cross-replica idempotency and email delivery claims, and remove the single-replica guard. Keep the Fumadocs deployment separate. It serves public documentation and agent-readable Markdown, not an MCP server.
-
-Configure the support mailbox and Resend retention to match the 90-day Lookout support-conversation retention policy where the provider permits it. Register `POST /v1/support/email/resend` for `email.received` events and keep the Resend signing secret separate from the reply-address HMAC secret.
+The frontend case picker uses `/cases`, then re-renders from
+`/context/latest?fault={key}`.

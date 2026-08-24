@@ -1,7 +1,8 @@
 node_modules/
-.DS_Store
-data/
-*.log
+dist/
 .env
-.env.*
-!.env.example
+.env.local
+data/cache/*.json
+*.log
+__pycache__/
+.DS_Store
