@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "trustedKeys": [
+    {
+      "keyId": "lookout-updates-2026-01",
+      "publicKeySpkiPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAo8/aupJ2UwPpoP0vi+FUBuXNzvl4OLt/P45Xn9s9jsI=\n-----END PUBLIC KEY-----\n"
+    }
+  ]
+}

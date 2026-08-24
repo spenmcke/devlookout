@@ -1,0 +1,40 @@
+---
+title: "Privacy Policy"
+description: "How Lookout handles installation, console, and Support AI data."
+---
+
+Last updated: August 23, 2026.
+
+## Operational health telemetry
+
+When Lookout is connected to the hosted console, each installed VM sends a bounded operational-health report every five minutes. The report contains the deployment and VM asset identifiers, VM CPU, memory, uptime, filesystem capacity, Lookout process resource usage, Lookout data-directory size, and delivery-queue counts. It does not contain filenames, file contents, process arguments, customer security events, raw logs, credentials, or network payloads.
+
+Operational-health reports are stored separately from customer security data in service-role-only Supabase tables. They are used by authorized Lookout operations staff to detect resource exhaustion, Lookout service degradation, delivery backlogs, and missing telemetry. They are not returned by customer console APIs or displayed in the customer dashboard.
+
+Samples and notification records are retained for 30 days and then deleted. Resolved operational alert state is deleted after 30 days. Uninstalling a deployment or deleting an account deletes the corresponding operational-health records. Alert notifications may be delivered to Lookout's internal Slack channel, with operational email as a delivery fallback.
+
+## Lookout Support AI Agent data
+
+When you call `ask_lookout_support`, Lookout processes the redacted question, bounded environment context, attempted steps, redacted diagnostics, selected public Lookout Documentation, and the validated structured answer. Lookout stores the redacted customer messages, validated assistant answers, citations, conversation status, and customer-visible staff replies so the coding agent and Lookout support staff can continue the conversation.
+
+Lookout also processes your authenticated account identity and support-token metadata to isolate the conversation to your account and notify support. Your account support token is encrypted at rest and can be viewed while authenticated in Settings. Credentials detected before processing are removed; high-confidence credential submissions are blocked from model processing.
+
+## Purpose and access
+
+Lookout uses this data to provide source-backed product support, prevent duplicate requests, deliver and thread support email, respond through support staff, protect the service, and measure aggregate reliability. Authorized Lookout support staff can read the redacted support conversation because every successful support question is emailed to the configured support inbox. Do not use Support AI for information you do not want shared with Lookout staff.
+
+## Subprocessors
+
+Lookout uses Supabase for normalized service storage, OpenAI for one-time support inference with API storage disabled, and Resend for support email delivery and inbound staff replies. These providers process only the bounded data required for their role. Lookout does not use support conversations for cross-customer memory or customer-specific model training.
+
+## Retention and deletion
+
+Support conversations and related pending email records are retained for 90 days from the most recent message by default, then hard-deleted. The support mailbox is configured for a matching retention period where the provider permits it. Invalid raw model output, pre-redaction input, detected secret values, inbound email headers, attachments, and quoted email history are not retained in the Lookout support store.
+
+Revoking a support token prevents future use but does not delete an existing support conversation. Deleting the Lookout account revokes and removes the tenant's support tokens and support conversations before the login is deleted. To request privacy information or deletion assistance, contact [support@devlookout.com](mailto:support@devlookout.com).
+
+## Operational and aggregate data
+
+Support operational logs contain bounded metadata such as an internal request ID, non-reversible token metadata identifier, outcome, latency, character counts, redaction category counts, model token totals, documentation fetch count, and email delivery outcome. They do not contain questions, diagnostics, answers, documentation excerpts, authorization headers, token values or digests, account email, deployment identifiers, IP addresses, or user-agent strings.
+
+Aggregate analytics record action names and booleans such as prompt copy, guide visit, token creation, authentication outcome, support-call outcome, citation presence, and escalation outcome. They do not record support content, token material, email addresses, or deployment identifiers.
