@@ -1,0 +1,126 @@
+name: Publish signed CLI artifact channel
+
+on:
+  workflow_dispatch:
+    inputs:
+      sequence:
+        description: Monotonically increasing CLI channel sequence
+        required: true
+        type: number
+      action:
+        description: Install current targets, roll back to specified digests, or pause target changes
+        required: true
+        default: install
+        type: choice
+        options:
+          - install
+          - rollback
+          - pause
+      amd64_digest:
+        description: Existing hosted amd64 digest required for rollback
+        required: false
+        type: string
+      arm64_digest:
+        description: Existing hosted arm64 digest required for rollback
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lookout-cli-update-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: production-updates
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+      - name: Download and verify hosted artifacts
+        if: inputs.action != 'pause'
+        env:
+          UPDATE_SEQUENCE: ${{ inputs.sequence }}
+          UPDATE_ACTION: ${{ inputs.action }}
+          ROLLBACK_AMD64_DIGEST: ${{ inputs.amd64_digest }}
+          ROLLBACK_ARM64_DIGEST: ${{ inputs.arm64_digest }}
+          HOSTED_ORIGIN: https://app.devlookout.com
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'const value=Number(process.argv[1]); if (!Number.isSafeInteger(value) || value < 1) process.exit(1)' "$UPDATE_SEQUENCE"
+          release_tag="v$(node -p "require('./package.json').version")"
+          health="$(curl --fail --silent --show-error --max-time 15 "$HOSTED_ORIGIN/health")"
+          test "$(jq -r .version <<<"$health")" = "$release_tag"
+          mkdir -p dist
+          for architecture in amd64 arm64; do
+            if [[ "$UPDATE_ACTION" = "rollback" ]]; then
+              if [[ "$architecture" = "amd64" ]]; then digest="$ROLLBACK_AMD64_DIGEST"; else digest="$ROLLBACK_ARM64_DIGEST"; fi
+            else
+              key="linux_target_${architecture}_sha256"
+              digest="$(jq -r --arg key "$key" '.artifacts[$key]' <<<"$health")"
+            fi
+            [[ "$digest" =~ ^[a-f0-9]{64}$ ]]
+            file="dist/lookout-target-linux-$architecture-$release_tag.tar.gz"
+            url="$HOSTED_ORIGIN/releases/$release_tag/$digest/$(basename "$file")"
+            curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location --max-time 300 --output "$file" "$url"
+            test "$(sha256sum "$file" | awk '{print $1}')" = "$digest"
+          done
+      - name: Sign CLI channel manifest
+        env:
+          UPDATE_SEQUENCE: ${{ inputs.sequence }}
+          UPDATE_ACTION: ${{ inputs.action }}
+          LOOKOUT_UPDATE_SIGNING_KEY_ID: lookout-updates-2026-01
+          LOOKOUT_UPDATE_SIGNING_PRIVATE_KEY_PEM: ${{ secrets.LOOKOUT_UPDATE_SIGNING_PRIVATE_KEY_PEM }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_tag="v$(node -p "require('./package.json').version")"
+          if [[ "$UPDATE_ACTION" = "pause" ]]; then
+            jq -n --arg release "$release_tag" --argjson sequence "$UPDATE_SEQUENCE" --arg publishedAt "$(date -u +%FT%TZ)" \
+              '{schemaVersion:1,channel:"cli-stable",sequence:$sequence,action:"pause",release:$release,publishedAt:$publishedAt}' > cli-update-payload.json
+            node scripts/sign-update-manifest.js cli-update-payload.json signed-cli-update-manifest.json
+            exit 0
+          fi
+          for architecture in amd64 arm64; do
+            file="dist/lookout-target-linux-$architecture-$release_tag.tar.gz"
+            sha256sum "$file" | awk '{print $1}' > "$file.sha256"
+          done
+          artifact_base="https://app.devlookout.com/releases/$release_tag"
+          amd64_digest="$(cat "dist/lookout-target-linux-amd64-$release_tag.tar.gz.sha256")"
+          arm64_digest="$(cat "dist/lookout-target-linux-arm64-$release_tag.tar.gz.sha256")"
+          jq -n --arg release "$release_tag" --arg action "$UPDATE_ACTION" --argjson sequence "$UPDATE_SEQUENCE" --arg publishedAt "$(date -u +%FT%TZ)" \
+            --arg amd64Url "$artifact_base/$amd64_digest/lookout-target-linux-amd64-$release_tag.tar.gz" \
+            --arg amd64Sha "$amd64_digest" --argjson amd64Size "$(stat -c %s "dist/lookout-target-linux-amd64-$release_tag.tar.gz")" \
+            --arg arm64Url "$artifact_base/$arm64_digest/lookout-target-linux-arm64-$release_tag.tar.gz" \
+            --arg arm64Sha "$arm64_digest" --argjson arm64Size "$(stat -c %s "dist/lookout-target-linux-arm64-$release_tag.tar.gz")" \
+            '{schemaVersion:1,channel:"cli-stable",sequence:$sequence,action:$action,release:$release,publishedAt:$publishedAt,artifacts:{amd64:{url:$amd64Url,sha256:$amd64Sha,size:$amd64Size},arm64:{url:$arm64Url,sha256:$arm64Sha,size:$arm64Size}}}' > cli-update-payload.json
+          node scripts/sign-update-manifest.js cli-update-payload.json signed-cli-update-manifest.json
+      - name: Publish CLI channel to Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.LOOKOUT_RELEASE_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.LOOKOUT_RELEASE_SUPABASE_SERVICE_KEY }}
+          UPDATE_SEQUENCE: ${{ inputs.sequence }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current="$(curl --fail --silent --show-error --max-time 15 \
+            -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            "$SUPABASE_URL/rest/v1/lookout_update_channels?channel=eq.cli-stable&select=sequence&limit=1")"
+          current_sequence="$(jq -r '.[0].sequence // 0' <<<"$current")"
+          test "$UPDATE_SEQUENCE" -gt "$current_sequence"
+          row="$(jq -n --argjson sequence "$UPDATE_SEQUENCE" --slurpfile manifest signed-cli-update-manifest.json \
+            '{channel:"cli-stable",sequence:$sequence,manifest:$manifest[0],updated_at:(now|todateiso8601)}')"
+          curl --fail --silent --show-error --max-time 15 -X POST \
+            -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            -H 'Content-Type: application/json' -H 'Prefer: resolution=merge-duplicates,return=minimal' \
+            "$SUPABASE_URL/rest/v1/lookout_update_channels?on_conflict=channel" --data-binary "$row"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-cli-update-${{ inputs.sequence }}
+          path: signed-cli-update-manifest.json
+          if-no-files-found: error

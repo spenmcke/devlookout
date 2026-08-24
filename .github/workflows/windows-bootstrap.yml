@@ -1,0 +1,131 @@
+name: Windows bootstrap
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-bootstrap.yml'
+      - 'bootstrap/*.ps1.in'
+      - 'install/onboard.js'
+      - 'src/platform/executable.js'
+      - 'test/portable-orchestrator.test.js'
+
+concurrency:
+  group: windows-bootstrap-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Exercise Windows orchestration bootstrap
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'lookout-windows-bootstrap'
+          $payload = Join-Path $root 'lookout-orchestration-v9.8.7'
+          New-Item -ItemType Directory -Path (Join-Path $payload 'install') -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $payload 'package.json') -Value '{"name":"lookout"}' -NoNewline
+          Set-Content -LiteralPath (Join-Path $payload 'install/fleet.js') -Value "'use strict';" -NoNewline
+          Set-Content -LiteralPath (Join-Path $payload 'install/onboard.js') -Value "require('node:fs').writeFileSync(process.env.LOOKOUT_WINDOWS_RESULT, JSON.stringify({ tokenFile: process.env.LOOKOUT_SETUP_TOKEN_FILE, targetUrl: process.env.LOOKOUT_RELEASE_URL }));" -NoNewline
+          $archive = Join-Path $root 'orchestration.zip'
+          Compress-Archive -LiteralPath $payload -DestinationPath $archive
+          $digest = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          $targetDigest = 'b' * 64
+          $script = (Get-Content -LiteralPath 'bootstrap/hosted-install.ps1.in' -Raw).Replace('@LOOKOUT_RELEASE_VERSION@', 'v9.8.7').Replace('@LOOKOUT_ORCHESTRATION_URL@', 'https://invalid.example/orchestration.zip').Replace('@LOOKOUT_ORCHESTRATION_SHA256@', $digest).Replace('@LOOKOUT_TARGET_URL@', 'https://releases.example/target-linux.tar.gz').Replace('@LOOKOUT_TARGET_SHA256@', $targetDigest)
+          $bootstrap = Join-Path $root 'install.ps1'
+          [IO.File]::WriteAllText($bootstrap, $script)
+          $token = Join-Path $root 'setup-token'
+          [IO.File]::WriteAllText($token, "lst_$('a' * 43)`n")
+          $env:LOOKOUT_BOOTSTRAP_TEST_MODE = '1'
+          $env:LOOKOUT_BOOTSTRAP_ORCHESTRATION_URL = $archive
+          $env:LOOKOUT_SETUP_TOKEN_FILE = $token
+          $env:LOOKOUT_WINDOWS_RESULT = Join-Path $root 'result.json'
+          & pwsh -NoProfile -File $bootstrap
+          if ($LASTEXITCODE -ne 0) { throw "bootstrap failed with $LASTEXITCODE" }
+          $result = Get-Content -LiteralPath $env:LOOKOUT_WINDOWS_RESULT -Raw | ConvertFrom-Json
+          if ($result.targetUrl -ne 'https://releases.example/target-linux.tar.gz') { throw 'target artifact was not passed to the orchestrator' }
+          if ($result.tokenFile -ne $token) { throw "bootstrap replaced the original retryable token file: $($result.tokenFile)" }
+      - name: Reject old Node before download
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'lookout-windows-old-node'
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          $oldNode = Join-Path $root 'node.cmd'
+          Set-Content -LiteralPath $oldNode -Value "@echo 18" -NoNewline
+          $env:LOOKOUT_BOOTSTRAP_TEST_MODE = '1'
+          $env:LOOKOUT_BOOTSTRAP_NODE = $oldNode
+          $env:LOOKOUT_SETUP_TOKEN_FILE = Join-Path $root 'setup-token'
+          [IO.File]::WriteAllText($env:LOOKOUT_SETUP_TOKEN_FILE, "lst_$('a' * 43)`n")
+          $ErrorActionPreference = 'Continue'
+          $output = & pwsh -NoProfile -File (Join-Path $env:RUNNER_TEMP 'lookout-windows-bootstrap/install.ps1') 2>&1
+          $bootstrapExitCode = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          if ($bootstrapExitCode -eq 0) { throw 'old Node unexpectedly passed preflight' }
+          if (($output -join "`n") -notmatch 'found major version 18') { throw "unexpected preflight output: $output" }
+          if (($output -join "`n") -match 'Connected|Needs access') { throw 'preflight emitted an invalid setup status' }
+          $global:LASTEXITCODE = 0
+      - name: Exercise Windows workstation CLI bootstrap
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'lookout-windows-cli-bootstrap'
+          $payload = Join-Path $root 'lookout-orchestration-v9.8.7'
+          foreach ($relative in @('bin', 'install', 'src/cli', 'tools', 'node_modules/yaml')) {
+            New-Item -ItemType Directory -Path (Join-Path $payload $relative) -Force | Out-Null
+          }
+          Set-Content -LiteralPath (Join-Path $payload 'package.json') -Value '{"name":"lookout"}' -NoNewline
+          Set-Content -LiteralPath (Join-Path $payload 'bin/lookout.js') -Value "'use strict';" -NoNewline
+          Set-Content -LiteralPath (Join-Path $payload 'install/fleet.js') -Value "'use strict';" -NoNewline
+          Set-Content -LiteralPath (Join-Path $payload 'install/workstation-link.js') -Value "'use strict';" -NoNewline
+          Set-Content -LiteralPath (Join-Path $payload 'src/cli/workstation-prepare.js') -Value "'use strict';" -NoNewline
+          Set-Content -LiteralPath (Join-Path $payload 'tools/lookout-support-report.js') -Value "'use strict';" -NoNewline
+          Set-Content -LiteralPath (Join-Path $payload 'node_modules/yaml/package.json') -Value '{"name":"yaml"}' -NoNewline
+          $installer = @'
+          'use strict';
+          require('node:fs').writeFileSync(process.env.LOOKOUT_WINDOWS_CLI_RESULT, JSON.stringify({
+            version: process.env.LOOKOUT_CLI_RELEASE_VERSION,
+            artifactSha256: process.env.LOOKOUT_CLI_ARTIFACT_SHA256,
+            targetAmd64Url: process.env.LOOKOUT_CLI_TARGET_AMD64_URL,
+            targetAmd64Sha256: process.env.LOOKOUT_CLI_TARGET_AMD64_SHA256,
+            targetArm64Url: process.env.LOOKOUT_CLI_TARGET_ARM64_URL,
+            targetArm64Sha256: process.env.LOOKOUT_CLI_TARGET_ARM64_SHA256
+          }));
+          '@
+          Set-Content -LiteralPath (Join-Path $payload 'install/workstation-cli-install.js') -Value $installer -NoNewline
+          $archive = Join-Path $root 'orchestration.zip'
+          Compress-Archive -LiteralPath $payload -DestinationPath $archive
+          $digest = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          $amd64Digest = 'b' * 64
+          $arm64Digest = 'c' * 64
+          $script = (Get-Content -LiteralPath 'bootstrap/workstation-cli-install.ps1.in' -Raw).Replace('@LOOKOUT_RELEASE_VERSION@', 'v9.8.7').Replace('@LOOKOUT_ORCHESTRATION_URL@', 'https://invalid.example/orchestration.zip').Replace('@LOOKOUT_ORCHESTRATION_SHA256@', $digest).Replace('@LOOKOUT_TARGET_AMD64_URL@', 'https://releases.example/target-linux-amd64.tar.gz').Replace('@LOOKOUT_TARGET_AMD64_SHA256@', $amd64Digest).Replace('@LOOKOUT_TARGET_ARM64_URL@', 'https://releases.example/target-linux-arm64.tar.gz').Replace('@LOOKOUT_TARGET_ARM64_SHA256@', $arm64Digest)
+          $bootstrap = Join-Path $root 'cli-install.ps1'
+          [IO.File]::WriteAllText($bootstrap, $script)
+          $env:LOOKOUT_CLI_BOOTSTRAP_TEST_MODE = '1'
+          $env:LOOKOUT_CLI_BOOTSTRAP_URL = $archive
+          $env:LOOKOUT_WINDOWS_CLI_RESULT = Join-Path $root 'result.json'
+          & pwsh -NoProfile -File $bootstrap
+          if ($LASTEXITCODE -ne 0) { throw "workstation CLI bootstrap failed with $LASTEXITCODE" }
+          $result = Get-Content -LiteralPath $env:LOOKOUT_WINDOWS_CLI_RESULT -Raw | ConvertFrom-Json
+          if ($result.version -ne 'v9.8.7') { throw 'release version was not passed to the CLI installer' }
+          if ($result.artifactSha256 -ne $digest) { throw 'artifact checksum was not passed to the CLI installer' }
+          if ($result.targetAmd64Url -ne 'https://releases.example/target-linux-amd64.tar.gz') { throw 'amd64 target artifact was not passed to the CLI installer' }
+          if ($result.targetAmd64Sha256 -ne $amd64Digest) { throw 'amd64 target checksum was not passed to the CLI installer' }
+          if ($result.targetArm64Url -ne 'https://releases.example/target-linux-arm64.tar.gz') { throw 'arm64 target artifact was not passed to the CLI installer' }
+          if ($result.targetArm64Sha256 -ne $arm64Digest) { throw 'arm64 target checksum was not passed to the CLI installer' }
+
+          Remove-Item -LiteralPath $env:LOOKOUT_WINDOWS_CLI_RESULT -Force
+          $env:LOOKOUT_CLI_BOOTSTRAP_SHA256 = '0' * 64
+          $ErrorActionPreference = 'Continue'
+          $output = & pwsh -NoProfile -File $bootstrap 2>&1
+          $bootstrapExitCode = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          if ($bootstrapExitCode -eq 0) { throw 'invalid workstation CLI checksum unexpectedly passed' }
+          if (($output -join "`n") -notmatch 'CLI artifact checksum mismatch') { throw "unexpected checksum failure output: $output" }
+          if (Test-Path -LiteralPath $env:LOOKOUT_WINDOWS_CLI_RESULT) { throw 'CLI installer ran after checksum rejection' }
+          $global:LASTEXITCODE = 0
+      - run: node --test test/portable-orchestrator.test.js
